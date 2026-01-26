@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 
 @Configuration
 public class RedisConfig {
+  
   private static final String RATELIMIT_SCRIPT_PATH = "scripts/ratelimit.lua";
 
   @Bean
