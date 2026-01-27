@@ -3,3 +3,12 @@ spring:
     redis:
       host: localhost
       port: 6379
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus, health, info
+  metrics:
+    tags:
+      application: rate-limiter-service

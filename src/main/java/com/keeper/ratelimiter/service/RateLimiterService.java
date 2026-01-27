@@ -1,8 +1,9 @@
 package com.keeper.ratelimiter.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Collections;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -10,7 +11,6 @@ import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RateLimiterService {
 
   private static final String REQUEST_TOKEN_COUNT = "1";
@@ -18,6 +18,23 @@ public class RateLimiterService {
 
   private final StringRedisTemplate redisTemplate;
   private final RedisScript<Boolean> rateLimitScript;
+
+  // 메트릭 카운터
+  private final Counter allowedCounter;
+  private final Counter blockedCounter;
+  private final Counter failOpenCounter;
+
+  public RateLimiterService(StringRedisTemplate redisTemplate,
+      RedisScript<Boolean> rateLimitScript,
+      MeterRegistry meterRegistry) {
+    this.redisTemplate = redisTemplate;
+    this.rateLimitScript = rateLimitScript;
+
+    // 메트릭 등록
+    this.allowedCounter = meterRegistry.counter("ratelimiter.request", "result", "allowed");
+    this.blockedCounter = meterRegistry.counter("ratelimiter.request", "result", "blocked");
+    this.failOpenCounter = meterRegistry.counter("ratelimiter.failure", "type", "redis_error");
+  }
 
   /**
    * Redis를 통해 토큰 획득을 시도합니다. (Fail-Open 정책 적용)
@@ -41,10 +58,18 @@ public class RateLimiterService {
           String.valueOf(now),
           REQUEST_TOKEN_COUNT
       );
-      return Boolean.TRUE.equals(allowed);
+
+      if (Boolean.TRUE.equals(allowed)) {
+        allowedCounter.increment();
+        return true;
+      } else {
+        blockedCounter.increment();
+        return false;
+      }
     } catch (Exception e) {
       // Redis 장애 시 서비스 가용성을 위해 무조건 통과
       log.error("Redis Rate Limiter Failure - Key: {}, Error: {}", key, e.getMessage());
+      failOpenCounter.increment();
       return true;
     }
   }
