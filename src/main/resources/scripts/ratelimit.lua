@@ -4,6 +4,9 @@
 -- argv[3]: now (현재 시간 - 초)
 -- argv[4]: requested (소모할 토큰 수)
 
+local keys = KEYS
+local argv = ARGV
+
 local key = keys[1]
 local capacity = tonumber(argv[1])
 local rate = tonumber(argv[2])
