@@ -1,15 +1,16 @@
 package com.keeper.ratelimiter.component;
 
 import java.lang.reflect.Method;
+import java.security.Principal;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import org.mockito.MockitoAnnotations;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -18,84 +19,93 @@ class RateLimitKeyGeneratorTest {
 
   private RateLimitKeyGenerator keyGenerator;
 
-  @Mock
   private ProceedingJoinPoint joinPoint;
-
-  @Mock
-  private MethodSignature signature;
+  private MockHttpServletRequest request;
 
   @BeforeEach
-  void setUp() throws NoSuchMethodException {
-    MockitoAnnotations.openMocks(this);
+  void setUp() {
     keyGenerator = new RateLimitKeyGenerator();
 
-    Method method = this.getClass().getMethod("dummyMethod");
+    joinPoint = mock(ProceedingJoinPoint.class);
+    MethodSignature signature = mock(MethodSignature.class);
+    Method method = mock(Method.class);
 
     when(joinPoint.getSignature()).thenReturn(signature);
     when(signature.getMethod()).thenReturn(method);
-  }
+    when(method.getName()).thenReturn("testMethod"); // 타겟 메서드 이름
 
-  public void dummyMethod() {}
-
-  @Test
-  @DisplayName("로그인한 사용자는 'user:{ID}' 기반의 키가 생성되어야 한다")
-  void generateKey_User() {
-    // Given
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    request.setUserPrincipal(() -> "keeper_student");
+    request = new MockHttpServletRequest();
     RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+  }
 
-    // When
-    String key = keyGenerator.generateKey(joinPoint);
-
-    // Then
-    assertThat(key).contains("user:keeper_student");
-    assertThat(key).contains("dummyMethod");
+  @AfterEach
+  void tearDown() {
+    RequestContextHolder.resetRequestAttributes();
   }
 
   @Test
-  @DisplayName("비로그인 사용자는 'ip:{IP}' 기반의 키가 생성되어야 한다")
-  void generateKey_Guest() {
-    // Given
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    request.setRemoteAddr("192.168.0.1"); // IP 설정
-    RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-
+  @DisplayName("Global Key는 사용자 식별자 없이 'rate_limit:global:메서드명' 형식을 따라야 한다.")
+  void shouldGenerateCorrectGlobalKey() {
     // When
-    String key = keyGenerator.generateKey(joinPoint);
+    String globalKey = keyGenerator.generateGlobalKey(joinPoint);
 
     // Then
-    assertThat(key).contains("ip:192.168.0.1");
-    assertThat(key).doesNotContain("user:");
+    assertThat(globalKey).isEqualTo("rate_limit:global:testMethod");
   }
 
   @Test
-  @DisplayName("프록시 환경: X-Forwarded-For 헤더가 있으면 해당 IP를 식별자로 사용해야 한다")
-  void generateKey_WithXForwardedFor() {
+  @DisplayName("로그인 사용자는 'rate_limit:user:아이디:메서드명' 형식을 따라야 한다.")
+  void shouldGenerateUserKey_WhenPrincipalExists() {
     // Given
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    request.addHeader("X-Forwarded-For", "203.0.113.195"); // 프록시 IP
-    request.setRemoteAddr("192.168.0.1"); // 로드밸런서 IP (무시되어야 함)
-    RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+    Principal principal = mock(Principal.class);
+    when(principal.getName()).thenReturn("keeper123");
+    request.setUserPrincipal(principal);
 
     // When
     String key = keyGenerator.generateKey(joinPoint);
 
     // Then
-    assertThat(key).contains("ip:203.0.113.195"); // 헤더 값이 우선순위
+    assertThat(key).isEqualTo("rate_limit:user:keeper123:testMethod");
   }
 
   @Test
-  @DisplayName("예외 상황: RequestContext가 없는 경우(HTTP 요청 아님) 'unknown'으로 처리해야 한다")
-  void generateKey_NoRequestContext() {
+  @DisplayName("비로그인 사용자는 'rate_limit:ip:IP주소:메서드명' 형식을 따라야 한다.")
+  void shouldGenerateIpKey_WhenPrincipalIsNull() {
     // Given
-    RequestContextHolder.resetRequestAttributes(); // 컨텍스트 강제 초기화
+    request.setRemoteAddr("127.0.0.1"); // 기본 IP 설정
 
     // When
     String key = keyGenerator.generateKey(joinPoint);
 
     // Then
-    // ip:unknown으로 떨어지는지 확인 (NullPointerException 방지 로직 검증)
-    assertThat(key).contains("ip:unknown");
+    assertThat(key).isEqualTo("rate_limit:ip:127.0.0.1:testMethod");
+  }
+
+  @Test
+  @DisplayName("X-Forwarded-For 헤더가 있으면 해당 IP를 사용해야 한다.")
+  void shouldPrioritizeXForwardedForHeader() {
+    // Given
+    request.setRemoteAddr("10.0.0.1"); // 로드밸런서 IP (무시되어야 함)
+    request.addHeader("X-Forwarded-For", "203.0.113.5"); // 실제 클라이언트 IP
+
+    // When
+    String key = keyGenerator.generateKey(joinPoint);
+
+    // Then
+    assertThat(key).isEqualTo("rate_limit:ip:203.0.113.5:testMethod");
+  }
+
+  @Test
+  @DisplayName("X-Forwarded-For 헤더가 비어있으면 RemoteAddr를 사용해야 한다.")
+  void shouldUseRemoteAddr_WhenHeaderIsEmpty() {
+    // Given
+    request.setRemoteAddr("127.0.0.1");
+    request.addHeader("X-Forwarded-For", "");
+
+    // When
+    String key = keyGenerator.generateKey(joinPoint);
+
+    // Then
+    assertThat(key).isEqualTo("rate_limit:ip:127.0.0.1:testMethod");
   }
 }
