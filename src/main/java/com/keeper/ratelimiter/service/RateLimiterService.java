@@ -1,6 +1,6 @@
 package com.keeper.ratelimiter.service;
 
-import io.micrometer.core.instrument.Counter;
+import com.keeper.ratelimiter.constant.RateLimitType;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Collections;
 import java.util.List;
@@ -18,41 +18,34 @@ public class RateLimiterService {
 
   private final StringRedisTemplate redisTemplate;
   private final RedisScript<Boolean> rateLimitScript;
-
-  // 메트릭 카운터
-  private final Counter allowedCounter;
-  private final Counter blockedCounter;
-  private final Counter failOpenCounter;
+  private final MeterRegistry meterRegistry; // 레지스트리를 직접 사용
 
   public RateLimiterService(StringRedisTemplate redisTemplate,
       RedisScript<Boolean> rateLimitScript,
       MeterRegistry meterRegistry) {
     this.redisTemplate = redisTemplate;
     this.rateLimitScript = rateLimitScript;
-
-    // 메트릭 등록
-    this.allowedCounter = meterRegistry.counter("ratelimiter.request", "result", "allowed");
-    this.blockedCounter = meterRegistry.counter("ratelimiter.request", "result", "blocked");
-    this.failOpenCounter = meterRegistry.counter("ratelimiter.failure", "type", "redis_error");
+    this.meterRegistry = meterRegistry;
   }
 
   /**
    * Redis를 통해 토큰 획득을 시도합니다. (Fail-Open 정책 적용)
    *
-   * @param key    Rate Limit Key
-   * @param limit  허용 량
-   * @param period 기간 (초)
+   * @param key       Rate Limit Key
+   * @param limit     허용 량
+   * @param period    기간 (초)
+   * @param limitType 제한 유형 ("user" 또는 "global") - 메트릭 태그용
    * @return 요청 허용 여부 (true: 허용, false: 차단)
    */
-  public boolean tryAcquire(String key, int limit, int period) {
+  public boolean tryAcquire(String key, int limit, int period, RateLimitType limitType) {
     try {
       Boolean allowed = executeRateLimitScript(key, limit, period);
-      updateMetrics(allowed);
+      updateMetrics(allowed, limitType);
       return Boolean.TRUE.equals(allowed);
 
     } catch (Exception e) {
       handleRedisFailure(key, e);
-      return true; // Fail-Open: 장애 시 무조건 허용
+      return true;
     }
   }
 
@@ -75,21 +68,22 @@ public class RateLimiterService {
   }
 
   /**
-   * Redis Lua Script 실행 결과에 따라 메트릭을 업데이트합니다.
+   * 결과에 따라 동적으로 태그를 붙여 메트릭을 업데이트합니다.
+   * Tag: result=(allowed/blocked), type=(user/global)
    */
-  private void updateMetrics(Boolean allowed) {
-    if (Boolean.TRUE.equals(allowed)) {
-      allowedCounter.increment();
-    } else {
-      blockedCounter.increment();
-    }
-  }
+  private void updateMetrics(Boolean allowed, RateLimitType limitType) {
+    String result = Boolean.TRUE.equals(allowed) ? "allowed" : "blocked";
 
+    meterRegistry.counter("ratelimiter.request",
+        "result", result,
+        "type", limitType.getMetricsValue()
+    ).increment();
+  }
   /**
    * Rate Limiting 도중 장애에 대한 예외를 처리합니다.
    */
   private void handleRedisFailure(String key, Exception e) {
     log.error("Redis Rate Limiter Failure - Key: {}, Error: {}", key, e.getMessage());
-    failOpenCounter.increment();
+    meterRegistry.counter("ratelimiter.failure", "type", "redis_error").increment();
   }
 }

@@ -2,6 +2,7 @@ package com.keeper.ratelimiter.aop;
 
 import com.keeper.ratelimiter.annotation.RateLimit;
 import com.keeper.ratelimiter.component.RateLimitKeyGenerator;
+import com.keeper.ratelimiter.constant.RateLimitType;
 import com.keeper.ratelimiter.exception.RateLimitException;
 import com.keeper.ratelimiter.service.RateLimiterService;
 import lombok.RequiredArgsConstructor;
@@ -50,7 +51,8 @@ public class RateLimitAspect {
     boolean allowed = rateLimiterService.tryAcquire(
         globalKey,
         rateLimit.globalLimit(),
-        rateLimit.globalPeriod()
+        rateLimit.globalPeriod(),
+        RateLimitType.GLOBAL
     );
 
     if (!allowed) {
@@ -65,7 +67,8 @@ public class RateLimitAspect {
     boolean allowed = rateLimiterService.tryAcquire(
         userKey,
         rateLimit.limit(),
-        rateLimit.period()
+        rateLimit.period(),
+        RateLimitType.USER
     );
 
     if (!allowed) {
