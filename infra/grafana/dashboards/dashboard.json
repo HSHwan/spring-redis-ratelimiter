@@ -137,7 +137,7 @@
             "uid": "P1809F7CD0C757596"
           },
           "editorMode": "code",
-          "expr": "rate(ratelimiter_request_total{result=\"allowed\"}[1m])",
+          "expr": "sum by (result) (rate(ratelimiter_request_total{result=\"allowed\"}[1m]))",
           "legendFormat": "Allowed",
           "range": true,
           "refId": "A"
@@ -148,7 +148,7 @@
             "uid": "P1809F7CD0C757596"
           },
           "editorMode": "code",
-          "expr": "rate(ratelimiter_request_total{result=\"blocked\"}[1m])",
+          "expr": "sum by (result) (rate(ratelimiter_request_total{result=\"blocked\"}[1m]))",
           "legendFormat": "Blocked",
           "range": true,
           "refId": "B"
@@ -216,7 +216,7 @@
             "uid": "P1809F7CD0C757596"
           },
           "editorMode": "code",
-          "expr": "increase(ratelimiter_failure_total[1m])",
+          "expr": "sum(increase(ratelimiter_failure_total[1m]))",
           "legendFormat": "Fail-Open Count",
           "range": true,
           "refId": "A"
