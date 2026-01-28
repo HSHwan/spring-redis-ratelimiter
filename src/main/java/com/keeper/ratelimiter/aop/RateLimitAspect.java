@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RateLimitAspect {
 
-  private static final String EXCEPTION_MESSAGE = "Too many requests. Please try again later.";
+  private static final String USER_LIMIT_MESSAGE = "Too many requests. Please try again later.";
+  private static final String GLOBAL_LIMIT_MESSAGE = "System is currently busy. Please try again later.";
 
   private final RateLimiterService rateLimiterService;
   private final RateLimitKeyGenerator keyGenerator;
@@ -32,12 +33,31 @@ public class RateLimitAspect {
    */
   @Around("@annotation(rateLimit)")
   public Object handleRateLimit(ProceedingJoinPoint joinPoint, RateLimit rateLimit) throws Throwable {
-    String key = keyGenerator.generateKey(joinPoint);
+    if (rateLimit.globalLimit() > 0) {
+      String globalKey = keyGenerator.generateGlobalKey(joinPoint);
 
-    boolean allowed = rateLimiterService.tryAcquire(key, rateLimit.limit(), rateLimit.period());
+      boolean globalAllowed = rateLimiterService.tryAcquire(
+          globalKey,
+          rateLimit.globalLimit(),
+          rateLimit.globalPeriod()
+      );
 
-    if (!allowed) {
-      throw new RateLimitException(EXCEPTION_MESSAGE);
+      if (!globalAllowed) {
+        log.warn("Global Limit Exceeded - Key: {}", globalKey);
+        throw new RateLimitException(GLOBAL_LIMIT_MESSAGE);
+      }
+    }
+
+    String userKey = keyGenerator.generateKey(joinPoint);
+    boolean userAllowed = rateLimiterService.tryAcquire(
+        userKey,
+        rateLimit.limit(),
+        rateLimit.period()
+    );
+
+    if (!userAllowed) {
+      log.warn("User Limit Exceeded - Key: {}", userKey);
+      throw new RateLimitException(USER_LIMIT_MESSAGE);
     }
 
     return joinPoint.proceed();

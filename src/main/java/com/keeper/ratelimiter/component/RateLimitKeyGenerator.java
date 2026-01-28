@@ -13,6 +13,7 @@ import java.security.Principal;
 public class RateLimitKeyGenerator {
 
   private static final String RATE_LIMIT_PREFIX = "rate_limit:";
+  private static final String GLOBAL_PREFIX = "global:"; // 추가
   private static final String USER_PREFIX = "user:";
   private static final String IP_PREFIX = "ip:";
   private static final String KEY_DELIMITER = ":";
@@ -29,7 +30,7 @@ public class RateLimitKeyGenerator {
    */
   public String generateKey(ProceedingJoinPoint joinPoint) {
     HttpServletRequest request = getRequest();
-    String methodName = ((MethodSignature) joinPoint.getSignature()).getMethod().getName();
+    String methodName = getMethodName(joinPoint);
 
     String identifier;
     String prefix;
@@ -49,6 +50,27 @@ public class RateLimitKeyGenerator {
         + identifier
         + KEY_DELIMITER
         + methodName;
+  }
+
+  /**
+   * Global Rate Limiting을 위한 키를 생성합니다.
+   * 사용자 식별자(IP/User ID)를 제외하고 메서드 이름만 사용합니다.
+   * @param joinPoint AOP JoinPoint
+   * @return 생성된 Redis Key (예: rate_limit:global:searchProducts)
+   */
+  public String generateGlobalKey(ProceedingJoinPoint joinPoint) {
+    String methodName = getMethodName(joinPoint);
+
+    return RATE_LIMIT_PREFIX
+        + GLOBAL_PREFIX
+        + methodName;
+  }
+
+  /**
+   * 메서드 이름을 추출합니다.
+   */
+  private String getMethodName(ProceedingJoinPoint joinPoint) {
+    return ((MethodSignature) joinPoint.getSignature()).getMethod().getName();
   }
 
   /**
