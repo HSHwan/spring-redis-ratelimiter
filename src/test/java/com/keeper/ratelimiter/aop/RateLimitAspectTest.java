@@ -2,6 +2,7 @@ package com.keeper.ratelimiter.aop;
 
 import com.keeper.ratelimiter.annotation.RateLimit;
 import com.keeper.ratelimiter.component.RateLimitKeyGenerator;
+import com.keeper.ratelimiter.constant.RateLimitType;
 import com.keeper.ratelimiter.exception.RateLimitException;
 import com.keeper.ratelimiter.service.RateLimiterService;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -57,7 +58,8 @@ class RateLimitAspectTest {
   @DisplayName("Global Limit을 초과하면 User Limit 검사 없이 즉시 예외가 발생해야 한다.")
   void shouldThrowException_WhenGlobalLimitExceeded() throws Throwable {
     // Given
-    when(rateLimiterService.tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt()))
+    when(rateLimiterService.tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt(), eq(
+        RateLimitType.GLOBAL)))
         .thenReturn(false);
 
     // When & Then
@@ -65,7 +67,7 @@ class RateLimitAspectTest {
         .isInstanceOf(RateLimitException.class)
         .hasMessage("System is currently busy. Please try again later.");
 
-    verify(rateLimiterService, never()).tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt());
+    verify(rateLimiterService, never()).tryAcquire(any(), anyInt(), anyInt(), eq(RateLimitType.USER));
     verify(joinPoint, never()).proceed();
   }
 
@@ -73,9 +75,9 @@ class RateLimitAspectTest {
   @DisplayName("Global Limit은 통과했지만 User Limit을 초과하면 예외가 발생해야 한다.")
   void shouldThrowException_WhenUserLimitExceeded() throws Throwable {
     // Given
-    when(rateLimiterService.tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt()))
+    when(rateLimiterService.tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt(), eq(RateLimitType.GLOBAL)))
         .thenReturn(true);
-    when(rateLimiterService.tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt()))
+    when(rateLimiterService.tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt(), eq(RateLimitType.USER)))
         .thenReturn(false);
 
     // When & Then
@@ -83,8 +85,8 @@ class RateLimitAspectTest {
         .isInstanceOf(RateLimitException.class)
         .hasMessage("Too many requests. Please try again later.");
 
-    verify(rateLimiterService).tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt());
-    verify(rateLimiterService).tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt());
+    verify(rateLimiterService).tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt(), eq(RateLimitType.GLOBAL));
+    verify(rateLimiterService).tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt(), eq(RateLimitType.USER));
 
     verify(joinPoint, never()).proceed();
   }
@@ -93,10 +95,12 @@ class RateLimitAspectTest {
   @DisplayName("Global Limit과 User Limit 모두 통과하면 비즈니스 로직이 실행되어야 한다.")
   void shouldProceed_WhenBothLimitsPassed() throws Throwable {
     // Given
-    when(rateLimiterService.tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt()))
+    when(rateLimiterService.tryAcquire(any(), anyInt(), anyInt(), eq(RateLimitType.GLOBAL)))
         .thenReturn(true);
-    when(rateLimiterService.tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt()))
+    when(rateLimiterService.tryAcquire(any(), anyInt(), anyInt(), eq(RateLimitType.USER)))
         .thenReturn(true);
+
+    // When
 
     // When
     rateLimitAspect.handleRateLimit(joinPoint, rateLimitAnnotation);
@@ -109,8 +113,9 @@ class RateLimitAspectTest {
   @DisplayName("Global Limit이 0(비활성)이면 Global 검사를 건너뛰어야 한다.")
   void shouldSkipGlobalCheck_WhenGlobalLimitIsZero() throws Throwable {
     // Given
-    when(rateLimitAnnotation.globalLimit()).thenReturn(0); // 비활성화
-    when(rateLimiterService.tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt()))
+    when(rateLimitAnnotation.globalLimit())
+        .thenReturn(0); // 비활성화
+    when(rateLimiterService.tryAcquire(any(), anyInt(), anyInt(), eq(RateLimitType.USER)))
         .thenReturn(true);
 
     // When
@@ -118,9 +123,9 @@ class RateLimitAspectTest {
 
     // Then
     verify(keyGenerator, never()).generateGlobalKey(any());
-    verify(rateLimiterService, never()).tryAcquire(eq("rate_limit:global:testMethod"), anyInt(), anyInt());
+    verify(rateLimiterService, never()).tryAcquire(any(), anyInt(), anyInt(), eq(RateLimitType.GLOBAL));
 
-    verify(rateLimiterService).tryAcquire(eq("rate_limit:user:testUser:testMethod"), anyInt(), anyInt());
+    verify(rateLimiterService).tryAcquire(any(), anyInt(), anyInt(), eq(RateLimitType.USER));
     verify(joinPoint).proceed();
   }
 
