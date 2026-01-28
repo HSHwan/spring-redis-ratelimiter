@@ -33,33 +33,65 @@ public class RateLimitAspect {
    */
   @Around("@annotation(rateLimit)")
   public Object handleRateLimit(ProceedingJoinPoint joinPoint, RateLimit rateLimit) throws Throwable {
+    validateRateLimitConfig(rateLimit);
+
     if (rateLimit.globalLimit() > 0) {
-      String globalKey = keyGenerator.generateGlobalKey(joinPoint);
-
-      boolean globalAllowed = rateLimiterService.tryAcquire(
-          globalKey,
-          rateLimit.globalLimit(),
-          rateLimit.globalPeriod()
-      );
-
-      if (!globalAllowed) {
-        log.warn("Global Limit Exceeded - Key: {}", globalKey);
-        throw new RateLimitException(GLOBAL_LIMIT_MESSAGE);
-      }
+      verifyGlobalLimit(joinPoint, rateLimit);
     }
 
+    verifyUserLimit(joinPoint, rateLimit);
+
+    return joinPoint.proceed();
+  }
+
+  private void verifyGlobalLimit(ProceedingJoinPoint joinPoint, RateLimit rateLimit) {
+    String globalKey = keyGenerator.generateGlobalKey(joinPoint);
+
+    boolean allowed = rateLimiterService.tryAcquire(
+        globalKey,
+        rateLimit.globalLimit(),
+        rateLimit.globalPeriod()
+    );
+
+    if (!allowed) {
+      log.warn("Global Limit Exceeded - Key: {}", globalKey);
+      throw new RateLimitException(GLOBAL_LIMIT_MESSAGE);
+    }
+  }
+
+  private void verifyUserLimit(ProceedingJoinPoint joinPoint, RateLimit rateLimit) {
     String userKey = keyGenerator.generateKey(joinPoint);
-    boolean userAllowed = rateLimiterService.tryAcquire(
+
+    boolean allowed = rateLimiterService.tryAcquire(
         userKey,
         rateLimit.limit(),
         rateLimit.period()
     );
 
-    if (!userAllowed) {
+    if (!allowed) {
       log.warn("User Limit Exceeded - Key: {}", userKey);
       throw new RateLimitException(USER_LIMIT_MESSAGE);
     }
+  }
 
-    return joinPoint.proceed();
+  /**
+   * 어노테이션 설정값의 유효성을 검증합니다.
+   */
+  private void validateRateLimitConfig(RateLimit rateLimit) {
+    // User Limit 검증
+    if (rateLimit.limit() < 0) {
+      throw new IllegalArgumentException("User limit cannot be negative.");
+    }
+    if (rateLimit.period() <= 0) {
+      throw new IllegalArgumentException("User period must be greater than 0.");
+    }
+
+    // Global Limit 검증
+    if (rateLimit.globalLimit() < 0) {
+      throw new IllegalArgumentException("Global limit cannot be negative.");
+    }
+    if (rateLimit.globalPeriod() <= 0) {
+      throw new IllegalArgumentException("Global period must be greater than 0.");
+    }
   }
 }

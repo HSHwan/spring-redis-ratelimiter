@@ -32,24 +32,34 @@ public class RateLimitKeyGenerator {
     HttpServletRequest request = getRequest();
     String methodName = getMethodName(joinPoint);
 
-    String identifier;
-    String prefix;
-
-    Principal userPrincipal = (request != null) ? request.getUserPrincipal() : null;
-
-    if (userPrincipal != null) {
-      identifier = userPrincipal.getName();
-      prefix = USER_PREFIX;
-    } else {
-      identifier = getClientIp(request);
-      prefix = IP_PREFIX;
-    }
+    String identifier = resolveIdentifier(request);
+    String prefix = resolvePrefix(request);
 
     return RATE_LIMIT_PREFIX
         + prefix
         + identifier
         + KEY_DELIMITER
         + methodName;
+  }
+
+  /**
+   * 식별자(Username or IP)를 추출합니다.
+   */
+  private String resolveIdentifier(HttpServletRequest request) {
+    Principal userPrincipal = (request != null) ? request.getUserPrincipal() : null;
+
+    if (userPrincipal != null) {
+      return userPrincipal.getName();
+    }
+    return getClientIp(request);
+  }
+
+  /**
+   * 접두사(user: or ip:)를 결정합니다.
+   */
+  private String resolvePrefix(HttpServletRequest request) {
+    Principal userPrincipal = (request != null) ? request.getUserPrincipal() : null;
+    return (userPrincipal != null) ? USER_PREFIX : IP_PREFIX;
   }
 
   /**

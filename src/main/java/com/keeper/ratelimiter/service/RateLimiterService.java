@@ -46,31 +46,50 @@ public class RateLimiterService {
    */
   public boolean tryAcquire(String key, int limit, int period) {
     try {
-      double rate = (double) limit / period;
-      long now = System.currentTimeMillis() / MILLI_TO_SECOND_DIVISOR;
-      List<String> keys = Collections.singletonList(key);
+      Boolean allowed = executeRateLimitScript(key, limit, period);
+      updateMetrics(allowed);
+      return Boolean.TRUE.equals(allowed);
 
-      Boolean allowed = redisTemplate.execute(
-          rateLimitScript,
-          keys,
-          String.valueOf(limit),
-          String.valueOf(rate),
-          String.valueOf(now),
-          REQUEST_TOKEN_COUNT
-      );
-
-      if (Boolean.TRUE.equals(allowed)) {
-        allowedCounter.increment();
-        return true;
-      } else {
-        blockedCounter.increment();
-        return false;
-      }
     } catch (Exception e) {
-      // Redis 장애 시 서비스 가용성을 위해 무조건 통과
-      log.error("Redis Rate Limiter Failure - Key: {}, Error: {}", key, e.getMessage());
-      failOpenCounter.increment();
-      return true;
+      handleRedisFailure(key, e);
+      return true; // Fail-Open: 장애 시 무조건 허용
     }
+  }
+
+  /**
+   * Redis Lua Script를 실행하여 토큰을 획득할 수 있는지 확인합니다.
+   */
+  private Boolean executeRateLimitScript(String key, int limit, int period) {
+    double rate = (double) limit / period;
+    long now = System.currentTimeMillis() / MILLI_TO_SECOND_DIVISOR;
+    List<String> keys = Collections.singletonList(key);
+
+    return redisTemplate.execute(
+        rateLimitScript,
+        keys,
+        String.valueOf(limit),
+        String.valueOf(rate),
+        String.valueOf(now),
+        REQUEST_TOKEN_COUNT
+    );
+  }
+
+  /**
+   * Redis Lua Script 실행 결과에 따라 메트릭을 업데이트합니다.
+   */
+  private void updateMetrics(Boolean allowed) {
+    if (Boolean.TRUE.equals(allowed)) {
+      allowedCounter.increment();
+    } else {
+      blockedCounter.increment();
+    }
+  }
+
+  /**
+   * Rate Limiting 도중 장애에 대한 예외를 처리합니다.
+   */
+  private void handleRedisFailure(String key, Exception e) {
+    log.error("Redis Rate Limiter Failure - Key: {}, Error: {}", key, e.getMessage());
+    failOpenCounter.increment();
   }
 }
