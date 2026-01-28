@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 1,
+  "id": null,
   "links": [],
   "panels": [
     {
@@ -35,13 +35,13 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Requests Per Second (RPS)",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
@@ -49,12 +49,12 @@
             },
             "insertNulls": false,
             "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -66,6 +66,7 @@
             }
           },
           "mappings": [],
+          "noValue": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -86,7 +87,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "green",
+                  "fixedColor": "#73BF69",
                   "mode": "fixed"
                 }
               }
@@ -95,38 +96,69 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Blocked"
+              "options": "User Limit Blocked"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "red",
+                  "fixedColor": "#F2CC0C",
                   "mode": "fixed"
                 }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Global Limit Blocked"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF5555",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 30
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 9,
-        "w": 12,
+        "h": 10,
+        "w": 14,
         "x": 0,
         "y": 0
       },
       "id": 1,
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
+          "calcs": [
+            "max",
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+          "hideZeros": true,
+          "mode": "multi",
+          "sort": "desc"
         }
       },
       "pluginVersion": "12.3.1",
@@ -137,7 +169,7 @@
             "uid": "P1809F7CD0C757596"
           },
           "editorMode": "code",
-          "expr": "sum by (result) (rate(ratelimiter_request_total{result=\"allowed\"}[1m]))",
+          "expr": "sum(rate(ratelimiter_request_total{result=\"allowed\"}[1m]))",
           "legendFormat": "Allowed",
           "range": true,
           "refId": "A"
@@ -148,13 +180,24 @@
             "uid": "P1809F7CD0C757596"
           },
           "editorMode": "code",
-          "expr": "sum by (result) (rate(ratelimiter_request_total{result=\"blocked\"}[1m]))",
-          "legendFormat": "Blocked",
+          "expr": "sum(rate(ratelimiter_request_total{result=\"blocked\", type=\"user\"}[1m]))",
+          "legendFormat": "User Limit Blocked",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C757596"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(ratelimiter_request_total{result=\"blocked\", type=\"global\"}[1m]))",
+          "legendFormat": "Global Limit Blocked",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Rate Limiter Traffic (Allowed vs Blocked)",
+      "title": "Dual-Layer Rate Limiter Traffic (Global vs User)",
       "type": "timeseries"
     },
     {
@@ -180,14 +223,15 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "noValue": 0
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
+        "h": 10,
+        "w": 10,
+        "x": 14,
         "y": 0
       },
       "id": 2,
@@ -199,7 +243,7 @@
         "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -216,8 +260,8 @@
             "uid": "P1809F7CD0C757596"
           },
           "editorMode": "code",
-          "expr": "sum(increase(ratelimiter_failure_total[1m]))",
-          "legendFormat": "Fail-Open Count",
+          "expr": "sum(increase(ratelimiter_failure_total[1m])) or on() vector(0)",
+          "legendFormat": "Fail-Open Events",
           "range": true,
           "refId": "A"
         }
@@ -229,7 +273,10 @@
   "preload": false,
   "refresh": "5s",
   "schemaVersion": 42,
-  "tags": [],
+  "tags": [
+    "rate-limiter",
+    "dual-layer"
+  ],
   "templating": {
     "list": []
   },
@@ -239,7 +286,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Spring Rate Limiter Dashboard",
-  "uid": "rate-limiter-v1",
-  "version": 2
+  "title": "Spring Rate Limiter Dashboard (Dual-Layer V3)",
+  "uid": "rate-limiter-dual-v3",
+  "version": 1
 }
