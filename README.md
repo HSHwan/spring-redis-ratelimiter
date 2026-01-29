@@ -49,8 +49,8 @@ graph LR
         Redis -->|Check User Limit| L2{Layer 2 Passed?}
         L2 -->|Yes| L1{Layer 1 Passed?}
         L1 -->|Yes| Refill[Refill & Decrement]
-        L2 -->|No| BlockUser[Block (User Limit)]
-        L1 -->|No| BlockGlobal[Block (Global Limit)]
+        L2 -->|No| BlockUser["Block (User Limit)"]
+        L1 -->|No| BlockGlobal["Block (Global Limit)"]
     end
     
     Refill --> Controller[Business Logic]
@@ -59,7 +59,6 @@ graph LR
     
     Redis -.->|Timeout/Down| FailOpen[Fail-Open Log]
     FailOpen --> Controller
-
 ```
 
 ## 🚀 Getting Started
